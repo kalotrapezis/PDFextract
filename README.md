@@ -14,6 +14,10 @@ adds low-memory page chunking, and provides page-based progress and measured ETA
   only when embeddings are enabled.
 - The main Debian package targets Ubuntu/Kubuntu-family Linux distributions.
 
+## Screenshot
+
+![PDFextract main window on Kubuntu](assets/pdfextract-main-window.png)
+
 ## Install on Ubuntu or Kubuntu
 
 Download the latest `.deb` from the GitHub Releases page, then run:
