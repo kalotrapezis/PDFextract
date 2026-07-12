@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PDF → DB (Marker)
+Comment=Μετατροπή ερευνητικών PDF σε δομημένη βάση paper
+Exec=pdf-html
+Icon=pdf-html
+Terminal=false
+Categories=Office;Utility;
