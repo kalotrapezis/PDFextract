@@ -26,6 +26,7 @@ def configure_fonts(root) -> None:
     # Set the title-bar/task-switcher icon as well as the desktop-menu icon.
     candidates = (
         Path(__file__).resolve().parent / "assets" / "pdf-html.png",
+        Path("/usr/share/icons/hicolor/512x512/apps/pdfextractor.png"),
         Path("/usr/share/icons/hicolor/512x512/apps/pdf-html.png"),
     )
     for path in candidates:

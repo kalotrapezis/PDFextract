@@ -28,14 +28,13 @@ from tkinter import filedialog, messagebox, ttk
 import profiles as prof_mod
 # Επαναχρησιμοποίηση κοινών βοηθητικών από το db_gui (RAM gauge, spinner, crash log).
 from db_gui import _HAS_DND, _ram_info, SPINNER_FRAMES, _logf
+from runtime import popen_kwargs, worker_cmd
 from ui_style import MONO_FONT, UI_FONT, configure_fonts
 
 if _HAS_DND:
     from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore
 
 HERE = Path(__file__).resolve().parent
-PY = str((HERE / ".venv" / "bin" / "python"))
-BUILD = str(HERE / "build.py")
 OUT_ROOT = HERE / "output"
 
 
@@ -43,7 +42,7 @@ class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         configure_fonts(root)
-        root.title("Knowledge Base — Overnight (PDF → Βάση + Skill)")
+        root.title("PDFExtractor — Βάση + JSON + Skill")
         root.geometry("780x740")
         root.minsize(680, 640)
 
@@ -100,8 +99,11 @@ class App:
         opt = ttk.Frame(root); opt.pack(fill="x", padx=12)
         self.embed_var = tk.BooleanVar(value=True)
         self.skill_var = tk.BooleanVar(value=True)
+        self.force_ocr_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(opt, text="Embeddings (bge-m3)", variable=self.embed_var).pack(side="left")
         ttk.Checkbutton(opt, text="Manifest (README.md)", variable=self.skill_var).pack(side="left", padx=12)
+        ttk.Checkbutton(opt, text="🐌 Επιβολή OCR (αργό)",
+                        variable=self.force_ocr_var).pack(side="left")
         self.ram_label = ttk.Label(opt, text="…", font=(UI_FONT, 9))
         self.ram_label.pack(side="right")
         self.root.after(60, self._refresh_ram)
@@ -190,21 +192,22 @@ class App:
         self.log.delete("1.0", tk.END)
         self.status.config(text="Εκκίνηση…")
 
-        cmd = [PY, BUILD, "--out", out, "--kind", self._kind()]
+        cmd = worker_cmd("build", "--out", out, "--kind", self._kind())
         if self.topic_var.get().strip():
             cmd += ["--topic", self.topic_var.get().strip()]
         if self.skill_var.get():
             cmd.append("--manifest")
         if not self.embed_var.get():
             cmd.append("--no-embed")
+        if self.force_ocr_var.get():
+            cmd.append("--force-ocr")
         cmd += self.files
         threading.Thread(target=self._run_proc, args=(cmd,), daemon=True).start()
         self._spin()
 
     def _run_proc(self, cmd: list[str]) -> None:
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, bufsize=1)
+            proc = subprocess.Popen(cmd, **popen_kwargs())
             assert proc.stdout is not None
             for line in proc.stdout:
                 self.q.put(line.rstrip("\n"))

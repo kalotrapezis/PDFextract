@@ -29,8 +29,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from runtime import popen_kwargs, worker_cmd
+
 HERE = Path(__file__).resolve().parent
-PY = sys.executable
 
 
 def _log(msg: str) -> None:
@@ -44,10 +45,7 @@ def _child_env(db: str) -> dict:
 
 
 def _stream(cmd: list[str], env: dict):
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1, env=env,
-    )
+    proc = subprocess.Popen(cmd, env=env, **popen_kwargs())
     assert proc.stdout is not None
     for line in proc.stdout:
         yield line.rstrip("\n")
@@ -56,9 +54,13 @@ def _stream(cmd: list[str], env: dict):
 
 def _resolve_db(db: str | None, out_dir: str | None) -> tuple[str, str | None]:
     """Επιστρέφει (db_path, out_dir). Αν δοθεί out_dir, η βάση μπαίνει μέσα του
-    ως <όνομα-φακέλου>.db (αυτόνομο πακέτο παράδοσης)."""
+    ως <όνομα-φακέλου>.db (αυτόνομο πακέτο παράδοσης), εκτός αν δόθηκε και
+    ρητό --db. Στην τελευταία περίπτωση κρατάμε ακριβώς το ζητούμενο όνομα βάσης
+    και χρησιμοποιούμε το --out μόνο για τα JSON/report."""
     if out_dir:
         od = Path(out_dir).expanduser().resolve()
+        if db:
+            return str(Path(db).expanduser().resolve()), str(od)
         name = od.name or "knowledge"
         return str(od / f"{name}.db"), str(od)
     if not db:
@@ -67,7 +69,7 @@ def _resolve_db(db: str | None, out_dir: str | None) -> tuple[str, str | None]:
 
 
 def run(db=None, kind="general", files=(), embed=True,
-        out_dir=None, topic=None, gen_skill=False) -> int:
+        out_dir=None, topic=None, gen_skill=False, force_ocr=False) -> int:
     import db as dbmod
     import ingest as ingmod
 
@@ -99,10 +101,17 @@ def run(db=None, kind="general", files=(), embed=True,
         for jp in jsons:
             ingest_one(jp)
 
-    # PDF → JSON (Marker, μία φόρτωση) με ΑΜΕΣΗ ingest ανά paper
+    # PDF → JSON με ΑΜΕΣΗ ingest ανά paper.
+    # Τα JSON μπαίνουν ΜΕΣΑ στο πακέτο (json/), όχι δίπλα στα PDF: τα θέλεις και τα δύο
+    # — JSON για τη συγγραφή (πλήρες κείμενο + report), βάση για αναζήτηση/έλεγχο.
     if pdfs:
         _log("STAGE|convert")
-        for line in _stream([PY, str(HERE / "convert.py"), *pdfs, "--format", "json"], env):
+        json_dir = Path(out_dir or Path(db_path).parent) / "json"
+        json_dir.mkdir(parents=True, exist_ok=True)
+        args = ["convert", *pdfs, "--format", "json", "--out", str(json_dir)]
+        if force_ocr:
+            args.append("--force-ocr")
+        for line in _stream(worker_cmd(*args), env):
             _log(line)
             if line.startswith("DONE|"):
                 ingest_one(line.split("|", 1)[1])
@@ -118,7 +127,7 @@ def run(db=None, kind="general", files=(), embed=True,
     # Embed στο τέλος (Marker έχει φύγει → μόνο bge-m3 στη RAM)
     if embed:
         _log("STAGE|embed")
-        for line in _stream([PY, str(HERE / "embed.py")], env):
+        for line in _stream(worker_cmd("embed"), env):
             s = line.strip()
             if s.startswith("…") and "ενότητες" in s:
                 frac = s.lstrip("…").split()[0]
@@ -148,10 +157,13 @@ def main(argv=None) -> int:
     p.add_argument("--manifest", "--skill", dest="manifest", action="store_true",
                    help="Γράψε README.md manifest στον φάκελο (δείχνει στο skill knowledge-base)")
     p.add_argument("--no-embed", action="store_true", help="Παράλειψε τη σημασιολογική ενσωμάτωση")
+    p.add_argument("--force-ocr", action="store_true",
+                   help="Επιβολή Marker/OCR σε ΟΛΑ τα PDF (αργό· αγνοεί το text layer)")
     p.add_argument("files", nargs="+", help="PDF ή/και JSON αρχεία")
     args = p.parse_args(argv)
     return run(db=args.db, kind=args.kind, files=args.files, embed=not args.no_embed,
-               out_dir=args.out, topic=args.topic, gen_skill=args.manifest)
+               out_dir=args.out, topic=args.topic, gen_skill=args.manifest,
+               force_ocr=args.force_ocr)
 
 
 if __name__ == "__main__":

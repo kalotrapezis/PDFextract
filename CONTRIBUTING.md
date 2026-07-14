@@ -7,10 +7,10 @@ Contributions are welcome through GitHub issues and pull requests.
 1. Use Linux with Python 3.12 or 3.13 and Tk installed.
 2. Create a virtual environment: `python3 -m venv .venv`.
 3. Install CPU PyTorch from the official PyTorch index.
-4. Install `marker-pdf`, `tkinterdnd2`, `sentence-transformers`, and `sqlite-vec`.
+4. Install `marker-pdf`, `tkinterdnd2`, `psutil`, `sentence-transformers`, and `sqlite-vec`.
 5. Run the main GUI with `./run.sh`.
 
-The first Marker run downloads its OCR/layout model files. Do not add model
+Only the first scanned-PDF/forced-OCR run downloads the OCR/layout models. Do not add model
 weights, PDFs, generated JSON/Markdown, databases, or virtual environments to
 commits. The repository `.gitignore` deliberately excludes them.
 
