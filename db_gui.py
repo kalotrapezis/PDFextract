@@ -25,6 +25,7 @@ from pathlib import Path
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from runtime import available_gb, popen_kwargs, worker_cmd
 from ui_style import MONO_FONT, UI_FONT, configure_fonts
 
 import profiles as prof_mod
@@ -48,8 +49,6 @@ except Exception:  # noqa: BLE001
     _HAS_DND = False
 
 HERE = Path(__file__).resolve().parent
-PY = str((HERE / ".venv" / "bin" / "python"))
-BUILD = str(HERE / "build.py")
 
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
@@ -57,15 +56,7 @@ SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 def _ram_info():
     """Ελεύθερη RAM → (avail_gb, speed, χρώμα). Σημασία γιατί το convert (Marker)
     θέλει ~8 GB."""
-    avail = 4.0
-    try:
-        with open("/proc/meminfo") as f:
-            for ln in f:
-                if ln.startswith("MemAvailable"):
-                    avail = int(ln.split()[1]) / 1048576
-                    break
-    except Exception:
-        pass
+    avail = available_gb()
     headroom = avail - 8.5
     if headroom >= 4:
         return avail, "πολύ γρήγορα (~7 λεπτά/PDF)", "#2e7d32"
@@ -83,7 +74,7 @@ class App:
         self.root = root
         configure_fonts(root)
         root.report_callback_exception = self._tk_error
-        root.title("Knowledge Base — Χτίσιμο Βάσης")
+        root.title("PDFExtractor — Χτίσιμο Βάσης")
         root.geometry("760x720")
         root.minsize(660, 620)
 
@@ -155,6 +146,9 @@ class App:
         self.embed_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(opt, text="Σημασιολογική ενσωμάτωση (bge-m3)",
                         variable=self.embed_var).pack(side="left")
+        self.force_ocr_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opt, text="🐌 Επιβολή OCR (αργό)",
+                        variable=self.force_ocr_var).pack(side="left", padx=12)
         self.ram_label = ttk.Label(opt, text="…", font=(UI_FONT, 9))
         self.ram_label.pack(side="right")
         self.root.after(60, self._refresh_ram)
@@ -289,17 +283,19 @@ class App:
         self.progress.config(maximum=max(1, len(self.files)), value=0)
         self.status.config(text="Εκκίνηση pipeline…")
 
-        cmd = [PY, BUILD, "--db", db, "--kind", kind, *self.files]
+        # --out ο φάκελος της βάσης: παίρνεις ΚΑΙ βάση ΚΑΙ JSON (+report) στο ίδιο τρέξιμο
+        cmd = worker_cmd("build", "--db", db, "--out", str(Path(db).parent),
+                         "--kind", kind, *self.files)
         if not self.embed_var.get():
             cmd.append("--no-embed")
+        if self.force_ocr_var.get():
+            cmd.append("--force-ocr")
         threading.Thread(target=self._run_proc, args=(cmd,), daemon=True).start()
         self._spin()
 
     def _run_proc(self, cmd: list[str]) -> None:
         try:
-            self.proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1)
+            self.proc = subprocess.Popen(cmd, **popen_kwargs())
             assert self.proc.stdout is not None
             for line in self.proc.stdout:
                 self.q.put(line.rstrip("\n"))

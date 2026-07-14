@@ -24,6 +24,9 @@ from pathlib import Path
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
+import fasttext_extract
+from runtime import available_gb, popen_kwargs, worker_cmd
 from ui_style import MONO_FONT, UI_FONT, configure_fonts
 
 # ---- Crash logging: ό,τι σκάσει (ακόμα και segfault) γράφεται εδώ ----
@@ -45,24 +48,13 @@ except Exception:  # noqa: BLE001
     _HAS_DND = False
 
 HERE = Path(__file__).resolve().parent
-PY = str((HERE / ".venv" / "bin" / "python"))  # interpreter με εγκατεστημένο το Marker
-CONVERT = str(HERE / "convert.py")
-BUILD = str(HERE / "build.py")
 
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 
 def _ram_info():
     """Διαβάζει ελεύθερη RAM -> (avail_gb, batch, εκτίμηση ταχύτητας, χρώμα, ζώνη)."""
-    avail = 4.0
-    try:
-        with open("/proc/meminfo") as f:
-            for ln in f:
-                if ln.startswith("MemAvailable"):
-                    avail = int(ln.split()[1]) / 1048576
-                    break
-    except Exception:
-        pass
+    avail = available_gb()
     headroom = avail - 8.5  # τα μοντέλα Marker θέλουν ~8 GB
     if headroom >= 4:
         return avail, 12, "πολύ γρήγορα (~7 λεπτά/paper)", "#2e7d32", "green"
@@ -102,12 +94,13 @@ class App:
         configure_fonts(root)
         # Πιάσε εξαιρέσεις μέσα σε tkinter callbacks (drop, κουμπιά) -> log + μήνυμα
         root.report_callback_exception = self._tk_error
-        root.title("PDF → HTML (Marker)")
+        root.title("PDFExtractor")
         root.geometry("640x520")
         root.minsize(560, 460)
 
         self.pdfs: list[str] = []
         self.page_counts: dict[str, int] = {}
+        self.is_fast: dict[str, bool] = {}   # text layer -> χωρίς OCR
         self.proc: subprocess.Popen | None = None
         self.q: "queue.Queue[str]" = queue.Queue()
         self.spin_i = 0
@@ -115,8 +108,12 @@ class App:
 
         pad = {"padx": 12, "pady": 6}
 
-        # ---- Δείκτης μνήμης/ταχύτητας (διαβάζεται όταν ανοίγει η εφαρμογή) ----
-        gauge = ttk.LabelFrame(root, text="Ταχύτητα (ανάλογα με την ελεύθερη μνήμη)")
+        # ---- Τρόπος μετατροπής ανά αρχείο (text layer -> χωρίς OCR) ----
+        self.mode_label = ttk.Label(root, text="", wraplength=600)
+        self.mode_label.pack(fill="x", padx=12, pady=(8, 0))
+
+        # ---- Δείκτης μνήμης (μετράει ΜΟΝΟ για σκαναρισμένα PDF -> OCR) ----
+        gauge = ttk.LabelFrame(root, text="Μνήμη — μετράει μόνο για σκαναρισμένα PDF (OCR)")
         gauge.pack(fill="x", **pad)
         self.ram_canvas = tk.Canvas(gauge, height=26, highlightthickness=0)
         self.ram_canvas.pack(fill="x", padx=8, pady=(8, 2))
@@ -169,9 +166,22 @@ class App:
         ttk.Label(fmt_row, text="Μορφή:").pack(side="left")
         self.fmt_var = tk.StringVar(value="json")
         for value, label in (("json", "JSON"), ("md", "Markdown"),
-                             ("html", "HTML"), ("db", "SQLite βάση")):
+                             ("html", "HTML"),
+                             ("db", "Βάση + JSON — συγγραφή & έλεγχος")):
             ttk.Radiobutton(fmt_row, text=label, value=value,
                             variable=self.fmt_var).pack(side="left", padx=4)
+
+        # ---- Επιβολή αργής διαδρομής (OCR) ----
+        ocr_row = ttk.Frame(root)
+        ocr_row.pack(fill="x", padx=12, pady=(4, 0))
+        self.force_ocr_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            ocr_row, text="🐌 Επιβολή OCR σε όλα (Marker) — αργό, αγνοεί το text layer",
+            variable=self.force_ocr_var, command=self._on_force_ocr,
+        ).pack(side="left")
+        self.ocr_hint = ttk.Label(
+            ocr_row, text="", foreground="#666", font=(UI_FONT, 9))
+        self.ocr_hint.pack(side="left", padx=8)
 
         # ---- Εκκίνηση + spinner + κατάσταση ----
         run_row = ttk.Frame(root)
@@ -254,11 +264,32 @@ class App:
                 except Exception as exc:  # noqa: BLE001
                     pages = 0
                     _logf.write(f"\nPAGE COUNT FAILED: {p}: {exc}\n")
+                # Έχει text layer; -> καθορίζει αν θα πάει γρήγορα ή από OCR.
+                try:
+                    fast = fasttext_extract.has_text_layer(p)
+                except Exception as exc:  # noqa: BLE001
+                    fast = False
+                    _logf.write(f"\nTEXT LAYER CHECK FAILED: {p}: {exc}\n")
                 self.pdfs.append(p)
                 self.page_counts[p] = pages
-                detail = f" — {pages} σελίδες" if pages else " — άγνωστες σελίδες"
-                self.listbox.insert(tk.END, os.path.basename(p) + detail)
+                self.is_fast[p] = fast
+                pg = f"{pages} σελίδες" if pages else "άγνωστες σελίδες"
+                mode = "⚡ γρήγορο" if fast else "🐌 OCR — αργό"
+                self.listbox.insert(tk.END, f"{os.path.basename(p)} — {pg} — {mode}")
         self._update_file_summary()
+
+    def _on_force_ocr(self) -> None:
+        """Προειδοποίηση: η επιβολή OCR κάνει τα πάντα ώρες αντί για δευτερόλεπτα."""
+        if self.force_ocr_var.get():
+            pages = sum(self.page_counts.get(p, 0) for p in self.pdfs)
+            hours = pages / 20.0 if pages else 0     # ~20 σελίδες/ώρα στη CPU
+            unit = "ώρα" if round(hours) == 1 else "ώρες"
+            est = f" (~{hours:.0f} {unit} για {pages} σελίδες)" if pages else ""
+            self.ocr_hint.config(
+                text=f"⚠ Θα αγνοήσει το text layer{est}. Μόνο αν αμφιβάλλεις για την έξοδο.",
+                foreground="#c62828")
+        else:
+            self.ocr_hint.config(text="", foreground="#666")
 
     def _update_file_summary(self) -> None:
         total = sum(self.page_counts.get(p, 0) for p in self.pdfs)
@@ -267,17 +298,33 @@ class App:
         self.files_frame.config(
             text="1) PDF αρχεία (ρίξε τα εδώ ή πάτα «Προσθήκη»)" + suffix)
 
+        n_ocr = sum(1 for p in self.pdfs if not self.is_fast.get(p, True))
+        n_fast = count - n_ocr
+        if not count:
+            msg, color = "", "#666"
+        elif not n_ocr:
+            msg = f"⚡ {n_fast} PDF με text layer — δευτερόλεπτα, χωρίς OCR."
+            color = "#2e7d32"
+        else:
+            msg = (f"⚡ {n_fast} γρήγορα · 🐌 {n_ocr} σκαναρισμένα χρειάζονται OCR "
+                   f"(~ώρες· την 1η φορά κατεβαίνουν ~3 GB μοντέλα).")
+            color = "#ef6c00"
+        self.mode_label.config(text=msg, foreground=color)
+        self._on_force_ocr()   # ξαναϋπολόγισε την εκτίμηση ωρών με τις νέες σελίδες
+
     def remove_selected(self) -> None:
         for idx in reversed(self.listbox.curselection()):
             self.listbox.delete(idx)
             path = self.pdfs.pop(idx)
             self.page_counts.pop(path, None)
+            self.is_fast.pop(path, None)
         self._update_file_summary()
 
     def clear_files(self) -> None:
         self.listbox.delete(0, tk.END)
         self.pdfs.clear()
         self.page_counts.clear()
+        self.is_fast.clear()
         self._update_file_summary()
 
     def pick_dest(self) -> None:
@@ -311,22 +358,22 @@ class App:
         if self.fmt_var.get() == "db":
             db_dir = Path(dest).expanduser() if dest else Path(self.pdfs[0]).resolve().parent
             db_path = db_dir / "papers.db"
-            cmd = [PY, BUILD, "--db", str(db_path), "--kind", "general",
-                   "--no-embed", *self.pdfs]
-            self.status.config(text=f"Χτίσιμο SQLite βάσης: {db_path.name}")
+            # --out ίδιος φάκελος: παίρνεις ΚΑΙ τη βάση ΚΑΙ τα JSON (+report) μαζί
+            cmd = worker_cmd("build", "--db", str(db_path), "--out", str(db_dir),
+                             "--kind", "general", "--no-embed", *self.pdfs)
+            self.status.config(text=f"Χτίσιμο βάσης + JSON: {db_path.name}")
         else:
-            cmd = [PY, CONVERT, *self.pdfs, "--format", self.fmt_var.get()]
+            cmd = worker_cmd("convert", *self.pdfs, "--format", self.fmt_var.get())
             if dest:
                 cmd += ["--out", dest]
+        if self.force_ocr_var.get():
+            cmd.append("--force-ocr")
         threading.Thread(target=self._run_proc, args=(cmd,), daemon=True).start()
         self._spin()
 
     def _run_proc(self, cmd: list[str]) -> None:
         try:
-            self.proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1,
-            )
+            self.proc = subprocess.Popen(cmd, **popen_kwargs())
             assert self.proc.stdout is not None
             for line in self.proc.stdout:
                 self.q.put(line.rstrip("\n"))

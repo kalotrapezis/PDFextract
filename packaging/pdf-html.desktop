@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=PDF → DB (Marker)
+Name=PDFExtractor
 Comment=Μετατροπή ερευνητικών PDF σε δομημένη βάση paper
-Exec=pdf-html
-Icon=pdf-html
+Exec=pdfextractor
+Icon=pdfextractor
 Terminal=false
 Categories=Office;Utility;

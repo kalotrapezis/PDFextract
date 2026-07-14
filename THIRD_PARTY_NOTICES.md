@@ -1,11 +1,11 @@
 # Third-party projects
 
-PDFextract is an integration and desktop workflow built on established open-source
+PDFExtractor is an integration and desktop workflow built on established open-source
 projects. Their authors retain copyright in their respective projects. Dependency
 versions and licenses can change; the linked upstream repositories and installed
 package metadata are authoritative.
 
-PDFextract itself is distributed under GNU GPL v3; see `LICENSE`.
+PDFExtractor itself is distributed under GNU GPL v3; see `LICENSE`.
 
 ## Core runtime
 
@@ -27,6 +27,6 @@ the Debian package. On first use, the upstream libraries download the files from
 their configured upstream locations into the user's local caches. Those files
 remain governed by their upstream terms.
 
-PDFextract does not claim ownership of these projects or models. It provides the
+PDFExtractor does not claim ownership of these projects or models. It provides the
 GUI, low-memory chunking workflow, structured renderers, SQLite schema, ingestion,
 query tools, packaging, and integration code around them.

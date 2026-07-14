@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-First-run wizard: κατεβάζει τα μοντέλα Surya/Marker με progress + «Δοκίμασε ξανά»,
-και μετά ανοίγει το κύριο GUI.
+Προαιρετικός wizard: κατεβάζει εκ των προτέρων τα μοντέλα Surya/Marker με
+progress + «Δοκίμασε ξανά» και μετά ανοίγει το κύριο GUI.
 
 Αν τα μοντέλα είναι ήδη έτοιμα (υπάρχει το flag .models_ready), προχωράει
 κατευθείαν στο gui.py.
@@ -49,7 +49,7 @@ class Wizard:
     def __init__(self, root):
         self.root = root
         configure_fonts(root)
-        root.title("PDF → DB — Πρώτη εκκίνηση")
+        root.title("PDFExtractor — Προαιρετική λήψη μοντέλων OCR")
         root.geometry("560x260")
         self.proc = None
 
