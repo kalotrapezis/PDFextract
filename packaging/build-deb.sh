@@ -3,7 +3,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-VER="2.0.0"
+VER="2.1.0"
 TOP="$(mktemp -d)"
 trap 'rm -rf "$TOP"' EXIT
 
@@ -12,7 +12,7 @@ mkdir -p "$PKG/DEBIAN" "$PKG/opt/pdfextractor" "$PKG/usr/bin" \
          "$PKG/usr/share/applications" "$PKG/usr/share/icons/hicolor/512x512/apps"
 
 # Πηγές της εφαρμογής (όλα τα scripts του pipeline + GUIs)
-for f in convert.py fasttext_extract.py download_models.py runtime.py gui.py firstrun.py db.py ingest.py query.py annotate.py \
+for f in convert.py fasttext_extract.py download_models.py runtime.py gui.py gtk_gui.py firstrun.py db.py ingest.py query.py annotate.py \
          embed.py profiles.py db_gui.py kb_gui.py build.py make_skill.py ui_style.py \
          run.sh run_db.sh run_kb.sh README.md LICENSE THIRD_PARTY_NOTICES.md CONTRIBUTING.md; do
   install -m 0644 "$REPO/$f" "$PKG/opt/pdfextractor/$f"
@@ -31,7 +31,7 @@ Version: $VER
 Section: science
 Priority: optional
 Architecture: all
-Depends: bash, curl, ca-certificates, python3, python3-tk
+Depends: bash, curl, ca-certificates, python3, python3-gi, gir1.2-gtk-4.0, python3-tk
 Maintainer: teo <kalotrapezis@gmail.com>
 Homepage: https://github.com/kalotrapezis/PDFextract
 Provides: pdf-html

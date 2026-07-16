@@ -25,14 +25,18 @@ are recovered and reported; unreadable pages are isolated instead of aborting th
 
 ## Screenshot
 
-![PDFExtractor main window on Kubuntu](assets/pdfextract-main-window.png)
+Version 2.1 introduces a **GTK 4 desktop GUI** that follows the system theme —
+its accent colour and light/dark mode come straight from the desktop. The previous
+Tkinter GUI stays as an automatic fallback.
+
+![PDFExtractor: the Tkinter GUI (v2.0) beside the new GTK 4 GUI (v2.1)](assets/pdfextract-comparison.png)
 
 ## Install on Ubuntu or Kubuntu
 
 Download the latest `.deb` from the GitHub Releases page, then run:
 
 ```bash
-sudo apt install ./pdfextractor_2.0.0_all.deb
+sudo apt install ./pdfextractor_2.1.0_all.deb
 ```
 
 Open **PDFExtractor** from the application menu. The first launch installs the
