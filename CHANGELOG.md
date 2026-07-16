@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.1.0] — 2026-07-16
+
+A new **GTK 4 desktop GUI**, rebuilt from the PixelRuller design. It follows the
+system theme — accent colour (blue, pink, …) and light/dark come straight from the
+desktop, with no hardcoded colours. The conversion engine is unchanged; this is a
+new front end over the same pipeline.
+
+### Added
+
+- **GTK 4 GUI** (`gtk_gui.py`, new). A themed two-pane layout: a Documents panel
+  with a drop zone, per-file ⚡ fast / 🐌 OCR badges and a live queue summary, and
+  an Extraction settings panel (output format, output folder, text-layer detection,
+  forced OCR, OCR memory profile, verification report). Real OS drag & drop, an
+  accent-coloured action bar with progress and an **Extract N PDFs** button.
+- Theme-following styling using built-in GTK style classes (`suggested-action`,
+  `card`, `dim-label`, `heading`) and the `@theme_selected_bg_color` named colour,
+  so the app adopts the user's accent instead of fighting it.
+
+### Changed
+
+- `run.sh` now launches the GTK 4 GUI when the GTK 4 introspection binding is
+  present, and automatically falls back to the Tkinter GUI otherwise.
+- Debian package depends on `python3-gi` and `gir1.2-gtk-4.0`; the RPM requires
+  `python3-gobject` and `gtk4`. The Tkinter GUI and `python3-tk` remain as a
+  fallback.
+
+### Notes
+
+- The GUI runs under the system `python3` (which carries the GTK 4 binding) while
+  all heavy work still runs in the project virtualenv — the launcher puts the venv
+  site-packages on `PYTHONPATH`, so page counting and text-layer detection keep
+  working in-process.
+
 ## [2.0.0] — 2026-07-15
 
 The Linux application is now named **PDFExtractor**. The Debian/RPM package,
